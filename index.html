@@ -17,6 +17,7 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             padding: 20px;
+            color: #333;
         }
 
         .container {
@@ -43,6 +44,7 @@
             margin-bottom: 20px;
             color: white;
             text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
 
         .wallet-amount {
@@ -67,6 +69,7 @@
             cursor: pointer;
             transition: all 0.3s ease;
             border: 2px solid transparent;
+            font-size: 14px;
         }
 
         .card-number:hover {
@@ -99,6 +102,12 @@
             border-radius: 10px;
             cursor: pointer;
             font-weight: bold;
+            transition: all 0.3s ease;
+        }
+
+        .page-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
         }
 
         .page-info {
@@ -120,6 +129,7 @@
             font-weight: bold;
             cursor: pointer;
             transition: all 0.3s ease;
+            font-size: 14px;
         }
 
         .btn-primary {
@@ -143,6 +153,7 @@
             padding: 15px;
             margin-bottom: 20px;
             display: none;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
         }
 
         .bingo-card.show {
@@ -173,6 +184,7 @@
             border: 1px solid #ddd;
             border-radius: 5px;
             margin: 2px;
+            font-size: 12px;
         }
 
         .bingo-cell.free {
@@ -190,6 +202,7 @@
             text-align: center;
             color: white;
             padding: 20px;
+            font-size: 16px;
         }
 
         .search-box {
@@ -202,6 +215,39 @@
             border: none;
             border-radius: 10px;
             font-size: 16px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .status-info {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .success-message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #4CAF50;
+            color: white;
+            padding: 20px 30px;
+            border-radius: 10px;
+            z-index: 1000;
+            text-align: center;
+            box-shadow: 0 5px 25px rgba(0, 0, 0, 0.3);
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .pulse {
+            animation: pulse 0.5s ease-in-out;
         }
     </style>
 </head>
@@ -213,9 +259,13 @@
         </div>
 
         <div class="wallet-info">
-            <div>Your Wallet</div>
+            <div>Your Wallet Balance</div>
             <div class="wallet-amount" id="walletAmount">0</div>
             <div>Stake: <span id="stakeAmount">10</span> coins</div>
+        </div>
+
+        <div class="status-info" id="statusInfo">
+            <div>Loading game data...</div>
         </div>
 
         <div class="search-box">
@@ -238,6 +288,7 @@
         </div>
 
         <div class="bingo-card" id="bingoCardPreview">
+            <h3 style="text-align: center; margin-bottom: 15px;">🎫 Card Preview</h3>
             <div class="bingo-header">
                 <div>B</div>
                 <div>I</div>
@@ -263,49 +314,46 @@
                 this.availableCards = [];
                 this.userData = {};
                 this.gameData = {};
+                this.isInitialized = false;
 
                 this.init();
             }
 
             async init() {
-                // Expand the Web App to full screen
-                this.tg.expand();
-
-                // Get initial data from Telegram
-                const initData = this.tg.initData || '';
-                const initDataUnsafe = this.tg.initDataUnsafe || {};
-                
-                console.log('Init Data:', initDataUnsafe);
-
-                // Try to get user data from init data or wait for it to be sent
-                if (initDataUnsafe.user) {
-                    this.userData = initDataUnsafe.user;
-                    await this.loadGameData();
-                } else {
-                    // Request user data from bot
+                try {
+                    // Initialize Telegram Web App
+                    this.tg.expand();
+                    this.tg.enableClosingConfirmation();
                     this.tg.ready();
-                    this.setupEventListeners();
-                    this.showLoading('Connecting to bot...');
-                }
 
-                this.setupEventListeners();
+                    console.log('Telegram Web App initialized');
+
+                    // Load initial data
+                    await this.loadGameData();
+                    this.setupEventListeners();
+                    this.isInitialized = true;
+                    
+                } catch (error) {
+                    console.error('Initialization error:', error);
+                    this.showError('Failed to initialize. Please try again.');
+                }
             }
 
             async loadGameData() {
                 try {
                     this.showLoading('Loading game data...');
                     
-                    // In a real implementation, you would fetch this from your bot's API
-                    // For now, we'll simulate the data
+                    // Simulate API call - in production this would fetch from your bot
                     await this.simulateGameData();
                     
                     this.hideLoading();
                     this.renderCardGrid();
                     this.updateWalletDisplay();
+                    this.updateStatusInfo();
                     
                 } catch (error) {
                     console.error('Error loading game data:', error);
-                    this.showLoading('Error loading data. Please try again.');
+                    this.showError('Error loading game data. Please try again.');
                 }
             }
 
@@ -313,19 +361,23 @@
                 // Simulate API call delay
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 
-                // Simulated game data - in real implementation, this comes from your bot
+                // Generate simulated data
+                const allCards = Array.from({length: 400}, (_, i) => i + 145);
+                const availableCards = allCards.filter(() => Math.random() > 0.4); // 60% available
+                
                 this.gameData = {
                     wallet: 162,
                     stake: 10,
-                    availableCards: Array.from({length: 400}, (_, i) => i + 145).filter(() => Math.random() > 0.3), // 70% available
+                    availableCards: availableCards,
                     currentGame: {
-                        id: 1,
                         active: false,
-                        pot: 0
-                    }
+                        pot: 350,
+                        players: 12
+                    },
+                    winPattern: "Line"
                 };
 
-                this.availableCards = this.gameData.availableCards;
+                this.availableCards = availableCards;
             }
 
             setupEventListeners() {
@@ -345,22 +397,18 @@
                     }
                 });
 
-                // Telegram Web App events
-                this.tg.onEvent('viewportChanged', this.onViewportChanged.bind(this));
-                
-                // Listen for messages from the bot
-                this.tg.onEvent('message', this.handleBotMessage.bind(this));
+                // Handle visibility changes (when app is reopened)
+                document.addEventListener('visibilitychange', () => {
+                    if (!document.hidden && this.isInitialized) {
+                        this.refreshData();
+                    }
+                });
             }
 
             renderCardGrid() {
                 const grid = document.getElementById('cardGrid');
                 grid.innerHTML = '';
 
-                const startIndex = this.currentPage * this.cardsPerPage;
-                const endIndex = startIndex + this.cardsPerPage;
-                const pageCards = this.availableCards.slice(startIndex, endIndex);
-
-                // Generate all possible card numbers for this page range
                 const startCard = 145 + (this.currentPage * this.cardsPerPage);
                 const endCard = Math.min(startCard + this.cardsPerPage - 1, 544);
 
@@ -383,6 +431,10 @@
             }
 
             selectCard(cardNumber) {
+                if (!this.availableCards.includes(cardNumber)) {
+                    return;
+                }
+
                 // Deselect previous card
                 document.querySelectorAll('.card-number.selected').forEach(card => {
                     card.classList.remove('selected');
@@ -392,6 +444,8 @@
                 const cardElement = document.querySelector(`[data-card-number="${cardNumber}"]`);
                 if (cardElement) {
                     cardElement.classList.add('selected');
+                    cardElement.classList.add('pulse');
+                    setTimeout(() => cardElement.classList.remove('pulse'), 500);
                 }
 
                 this.selectedCard = cardNumber;
@@ -402,16 +456,16 @@
             }
 
             selectRandomCard() {
-                const available = this.availableCards.filter(card => 
+                const availableOnPage = this.availableCards.filter(card => 
                     card >= 145 + (this.currentPage * this.cardsPerPage) && 
                     card < 145 + ((this.currentPage + 1) * this.cardsPerPage)
                 );
 
-                if (available.length > 0) {
-                    const randomCard = available[Math.floor(Math.random() * available.length)];
+                if (availableOnPage.length > 0) {
+                    const randomCard = availableOnPage[Math.floor(Math.random() * availableOnPage.length)];
                     this.selectCard(randomCard);
                 } else {
-                    alert('No available cards on this page. Try another page.');
+                    this.showMessage('No available cards on this page. Try another page.');
                 }
             }
 
@@ -419,22 +473,24 @@
                 if (!this.selectedCard) return;
 
                 if (this.gameData.wallet < this.gameData.stake) {
-                    alert('Insufficient funds in your wallet!');
+                    this.showMessage('Insufficient funds in your wallet!');
                     return;
                 }
 
                 try {
-                    this.showLoading('Joining game...');
+                    this.showLoading('Processing selection...');
 
-                    // Send selection back to bot
+                    // Prepare data to send back to bot
                     const selectionData = {
                         action: 'select_card',
                         card_number: this.selectedCard,
-                        user_id: this.userData?.id,
+                        user_id: this.tg.initDataUnsafe?.user?.id,
                         timestamp: Date.now()
                     };
 
-                    // Send data to bot
+                    console.log('Sending selection data:', selectionData);
+
+                    // Send data to Telegram bot
                     if (this.tg.sendData) {
                         this.tg.sendData(JSON.stringify(selectionData));
                     }
@@ -444,12 +500,14 @@
 
                     // Close the web app after a delay
                     setTimeout(() => {
-                        this.tg.close();
+                        if (this.tg.close) {
+                            this.tg.close();
+                        }
                     }, 2000);
 
                 } catch (error) {
                     console.error('Error selecting card:', error);
-                    alert('Error selecting card. Please try again.');
+                    this.showError('Error selecting card. Please try again.');
                 }
             }
 
@@ -482,7 +540,7 @@
                             numbers.push(num);
                         }
                     }
-                    card[letter] = numbers;
+                    card[letter] = numbers.sort((a, b) => a - b);
                 }
 
                 // Center is free
@@ -492,15 +550,21 @@
             }
 
             seededRandom(seed) {
+                let value = seed;
                 return function() {
-                    seed = (seed * 9301 + 49297) % 233280;
-                    return seed / 233280;
+                    value = (value * 9301 + 49297) % 233280;
+                    return value / 233280;
                 };
             }
 
             renderBingoCard(card) {
                 const container = document.getElementById('bingoCardPreview');
-                let html = '<div class="bingo-header"><div>B</div><div>I</div><div>N</div><div>G</div><div>O</div></div>';
+                // Clear existing content except the header
+                const header = container.querySelector('.bingo-header');
+                container.innerHTML = '';
+                if (header) container.appendChild(header);
+                
+                let html = '';
 
                 for (let i = 0; i < 5; i++) {
                     html += '<div class="bingo-row">';
@@ -512,7 +576,7 @@
                     html += '</div>';
                 }
 
-                container.innerHTML = html;
+                container.innerHTML += html;
             }
 
             previousPage() {
@@ -523,7 +587,7 @@
             }
 
             nextPage() {
-                const totalPages = Math.ceil(this.availableCards.length / this.cardsPerPage);
+                const totalPages = Math.ceil(400 / this.cardsPerPage);
                 if (this.currentPage < totalPages - 1) {
                     this.currentPage++;
                     this.renderCardGrid();
@@ -531,7 +595,7 @@
             }
 
             updatePagination() {
-                const totalPages = Math.ceil(this.availableCards.length / this.cardsPerPage);
+                const totalPages = Math.ceil(400 / this.cardsPerPage);
                 document.getElementById('pageInfo').textContent = `Page ${this.currentPage + 1}/${totalPages}`;
                 document.getElementById('prevPage').disabled = this.currentPage === 0;
                 document.getElementById('nextPage').disabled = this.currentPage >= totalPages - 1;
@@ -553,9 +617,9 @@
                         const cardElement = document.querySelector(`[data-card-number="${cardNum}"]`);
                         if (cardElement) {
                             cardElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            cardElement.style.animation = 'pulse 1s infinite';
+                            cardElement.style.boxShadow = '0 0 0 3px #4CAF50';
                             setTimeout(() => {
-                                cardElement.style.animation = '';
+                                cardElement.style.boxShadow = '';
                             }, 2000);
                         }
                     }
@@ -568,6 +632,8 @@
                     const cardNum = parseInt(searchTerm);
                     if (cardNum >= 145 && cardNum <= 544 && this.availableCards.includes(cardNum)) {
                         this.selectCard(cardNum);
+                    } else {
+                        this.showMessage('Card not available. Please select another card.');
                     }
                 }
             }
@@ -577,6 +643,16 @@
                 document.getElementById('stakeAmount').textContent = this.gameData.stake;
             }
 
+            updateStatusInfo() {
+                const statusElement = document.getElementById('statusInfo');
+                statusElement.innerHTML = `
+                    <div><strong>Available Cards:</strong> ${this.availableCards.length}/400</div>
+                    <div><strong>Current Pot:</strong> ${this.gameData.currentGame.pot} coins</div>
+                    <div><strong>Win Pattern:</strong> ${this.gameData.winPattern}</div>
+                    <div><strong>Players:</strong> ${this.gameData.currentGame.players}</div>
+                `;
+            }
+
             showLoading(message) {
                 const loading = document.getElementById('loading');
                 loading.textContent = message;
@@ -584,66 +660,95 @@
                 
                 document.getElementById('cardGrid').style.display = 'none';
                 document.getElementById('bingoCardPreview').style.display = 'none';
+                document.getElementById('statusInfo').style.display = 'none';
             }
 
             hideLoading() {
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('cardGrid').style.display = 'grid';
                 document.getElementById('bingoCardPreview').style.display = 'block';
+                document.getElementById('statusInfo').style.display = 'block';
             }
 
             showSuccess(message) {
-                const successDiv = document.createElement('div');
-                successDiv.style.cssText = `
-                    position: fixed;
-                    top: 50%;
-                    left: 50%;
-                    transform: translate(-50%, -50%);
-                    background: #4CAF50;
-                    color: white;
-                    padding: 20px;
-                    border-radius: 10px;
-                    z-index: 1000;
-                    text-align: center;
-                `;
-                successDiv.textContent = message;
-                document.body.appendChild(successDiv);
+                this.showMessage(message, 'success');
+            }
+
+            showError(message) {
+                this.showMessage(message, 'error');
+            }
+
+            showMessage(message, type = 'info') {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `success-message ${type}`;
+                messageDiv.textContent = message;
+                messageDiv.style.background = type === 'error' ? '#f44336' : type === 'success' ? '#4CAF50' : '#2196F3';
+                
+                document.body.appendChild(messageDiv);
 
                 setTimeout(() => {
-                    document.body.removeChild(successDiv);
+                    if (document.body.contains(messageDiv)) {
+                        document.body.removeChild(messageDiv);
+                    }
                 }, 3000);
             }
 
-            onViewportChanged() {
-                console.log('Viewport changed');
-            }
-
-            handleBotMessage(message) {
-                console.log('Message from bot:', message);
-                // Handle messages from the bot if needed
+            refreshData() {
+                console.log('Refreshing game data...');
+                this.loadGameData();
             }
         }
 
         // Initialize the web app when the page loads
         document.addEventListener('DOMContentLoaded', () => {
-            new BingoWebApp();
+            // Check if we're in Telegram Web App
+            if (window.Telegram && window.Telegram.WebApp) {
+                new BingoWebApp();
+            } else {
+                // Fallback for testing outside Telegram
+                console.log('Running in standalone mode');
+                // Mock Telegram Web App environment for testing
+                window.Telegram = {
+                    WebApp: {
+                        initData: '',
+                        initDataUnsafe: {},
+                        version: '6.0',
+                        platform: 'web',
+                        expand: () => console.log('App expanded'),
+                        ready: () => console.log('App ready'),
+                        enableClosingConfirmation: () => console.log('Closing confirmation enabled'),
+                        sendData: (data) => {
+                            console.log('Data sent to bot:', data);
+                            alert('Card selection sent to bot! In Telegram, this would close the app.');
+                        },
+                        close: () => {
+                            console.log('App closed');
+                            alert('App would close in Telegram environment');
+                        }
+                    }
+                };
+                
+                new BingoWebApp();
+            }
         });
 
-        // Add some CSS animations
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes pulse {
-                0% { transform: scale(1); }
-                50% { transform: scale(1.05); }
-                100% { transform: scale(1); }
-            }
-            
-            .card-number {
-                animation-duration: 0.3s;
-                animation-fill-mode: both;
-            }
-        `;
-        document.head.appendChild(style);
+        // Add CSS for standalone testing
+        if (!window.Telegram || !window.Telegram.WebApp) {
+            const style = document.createElement('style');
+            style.textContent = `
+                body::before {
+                    content: "⚠️ Testing Mode - Outside Telegram";
+                    display: block;
+                    background: #ff9800;
+                    color: white;
+                    padding: 10px;
+                    text-align: center;
+                    font-weight: bold;
+                    margin-bottom: 20px;
+                }
+            `;
+            document.head.appendChild(style);
+        }
     </script>
 </body>
 </html>
