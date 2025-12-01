@@ -304,451 +304,202 @@
         </div>
     </div>
 
-    <script>
-        class BingoWebApp {
-            constructor() {
-                this.tg = window.Telegram.WebApp;
-                this.selectedCard = null;
-                this.currentPage = 0;
-                this.cardsPerPage = 40;
-                this.availableCards = [];
-                this.userData = {};
-                this.gameData = {};
-                this.isInitialized = false;
+    // Replace the entire script section with this enhanced version
 
-                this.init();
-            }
+<script>
+    class BingoWebApp {
+        constructor() {
+            this.tg = window.Telegram.WebApp;
+            this.selectedCard = null;
+            this.currentPage = 0;
+            this.cardsPerPage = 40;
+            this.availableCards = [];
+            this.userData = {};
+            this.gameData = {};
+            this.isInitialized = false;
+            this.ws = null;
+            this.apiUrl = 'https://your-backend-url.com'; // Replace with your backend URL
 
-            async init() {
-                try {
-                    // Initialize Telegram Web App
-                    this.tg.expand();
-                    this.tg.enableClosingConfirmation();
-                    this.tg.ready();
+            this.init();
+        }
 
-                    console.log('Telegram Web App initialized');
+        async init() {
+            try {
+                this.tg.expand();
+                this.tg.ready();
 
-                    // Load initial data
-                    await this.loadGameData();
-                    this.setupEventListeners();
-                    this.isInitialized = true;
-                    
-                } catch (error) {
-                    console.error('Initialization error:', error);
-                    this.showError('Failed to initialize. Please try again.');
-                }
-            }
-
-            async loadGameData() {
-                try {
-                    this.showLoading('Loading game data...');
-                    
-                    // Simulate API call - in production this would fetch from your bot
-                    await this.simulateGameData();
-                    
-                    this.hideLoading();
-                    this.renderCardGrid();
-                    this.updateWalletDisplay();
-                    this.updateStatusInfo();
-                    
-                } catch (error) {
-                    console.error('Error loading game data:', error);
-                    this.showError('Error loading game data. Please try again.');
-                }
-            }
-
-            async simulateGameData() {
-                // Simulate API call delay
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                // Initialize user
+                await this.initializeUser();
                 
-                // Generate simulated data
-                const allCards = Array.from({length: 400}, (_, i) => i + 145);
-                const availableCards = allCards.filter(() => Math.random() > 0.4); // 60% available
+                // Load game data
+                await this.loadGameData();
                 
-                this.gameData = {
-                    wallet: 162,
-                    stake: 10,
-                    availableCards: availableCards,
-                    currentGame: {
-                        active: false,
-                        pot: 350,
-                        players: 12
-                    },
-                    winPattern: "Line"
+                // Connect to WebSocket for real-time updates
+                this.connectWebSocket();
+                
+                this.setupEventListeners();
+                this.isInitialized = true;
+                
+            } catch (error) {
+                console.error('Initialization error:', error);
+                this.showError('Failed to initialize. Please try again.');
+            }
+        }
+
+        async initializeUser() {
+            const user = this.tg.initDataUnsafe?.user;
+            if (!user) {
+                throw new Error('User data not available');
+            }
+
+            // Register user with backend
+            const response = await fetch(`${this.apiUrl}/api/users`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    telegram_id: user.id,
+                    username: user.first_name
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to register user');
+            }
+
+            this.userData = await response.json();
+        }
+
+        async loadGameData() {
+            try {
+                this.showLoading('Loading game data...');
+                
+                // Fetch current game
+                const gameResponse = await fetch(`${this.apiUrl}/api/games/current`);
+                if (!gameResponse.ok) throw new Error('Failed to fetch game');
+                this.gameData = await gameResponse.json();
+
+                // Fetch available cards
+                const cardsResponse = await fetch(`${this.apiUrl}/api/available-cards/${this.gameData.id}`);
+                if (cardsResponse.ok) {
+                    const cardsData = await cardsResponse.json();
+                    this.availableCards = cardsData.available_cards;
+                }
+
+                this.hideLoading();
+                this.renderCardGrid();
+                this.updateWalletDisplay();
+                this.updateStatusInfo();
+                
+            } catch (error) {
+                console.error('Error loading game data:', error);
+                this.showError('Error loading game data. Please try again.');
+            }
+        }
+
+        connectWebSocket() {
+            try {
+                this.ws = new WebSocket(`wss://your-backend-url.com/ws/${this.userData.id}`);
+                
+                this.ws.onopen = () => {
+                    console.log('WebSocket connected');
                 };
 
-                this.availableCards = availableCards;
+                this.ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    this.handleWebSocketMessage(data);
+                };
+
+                this.ws.onclose = () => {
+                    console.log('WebSocket disconnected');
+                    // Attempt to reconnect after 5 seconds
+                    setTimeout(() => this.connectWebSocket(), 5000);
+                };
+
+            } catch (error) {
+                console.error('WebSocket connection failed:', error);
+            }
+        }
+
+        handleWebSocketMessage(data) {
+            switch (data.type) {
+                case 'player_joined':
+                    this.updateStatusInfo();
+                    this.showMessage(`New player joined! Total: ${data.player_count}`);
+                    break;
+                
+                case 'game_started':
+                    this.showMessage('🎮 Game started! Numbers will be called automatically.');
+                    break;
+                
+                case 'number_called':
+                    this.showMessage(`🎲 Number called: ${data.number}`);
+                    break;
+                
+                case 'winner':
+                    this.showMessage(`🏆 ${data.winner} won ${data.pot_amount} coins with card #${data.card_number}!`);
+                    break;
+            }
+        }
+
+        // ... (rest of the methods remain similar but use the API)
+
+        async confirmCardSelection() {
+            if (!this.selectedCard) return;
+
+            if (this.userData.wallet < this.gameData.entry_fee) {
+                this.showMessage('Insufficient funds in your wallet!');
+                return;
             }
 
-            setupEventListeners() {
-                // Pagination
-                document.getElementById('prevPage').addEventListener('click', () => this.previousPage());
-                document.getElementById('nextPage').addEventListener('click', () => this.nextPage());
+            try {
+                this.showLoading('Processing selection...');
 
-                // Card selection
-                document.getElementById('randomCard').addEventListener('click', () => this.selectRandomCard());
-                document.getElementById('selectCard').addEventListener('click', () => this.confirmCardSelection());
-
-                // Search
-                document.getElementById('cardSearch').addEventListener('input', (e) => this.handleSearch(e));
-                document.getElementById('cardSearch').addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') {
-                        this.handleSearchEnter(e);
-                    }
+                const response = await fetch(`${this.apiUrl}/api/games/${this.gameData.id}/join`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: this.userData.id,
+                        card_number: this.selectedCard
+                    })
                 });
 
-                // Handle visibility changes (when app is reopened)
-                document.addEventListener('visibilitychange', () => {
-                    if (!document.hidden && this.isInitialized) {
-                        this.refreshData();
-                    }
-                });
-            }
-
-            renderCardGrid() {
-                const grid = document.getElementById('cardGrid');
-                grid.innerHTML = '';
-
-                const startCard = 145 + (this.currentPage * this.cardsPerPage);
-                const endCard = Math.min(startCard + this.cardsPerPage - 1, 544);
-
-                for (let cardNum = startCard; cardNum <= endCard; cardNum++) {
-                    const cardElement = document.createElement('div');
-                    cardElement.className = 'card-number';
-                    cardElement.textContent = cardNum;
-                    cardElement.dataset.cardNumber = cardNum;
-
-                    if (!this.availableCards.includes(cardNum)) {
-                        cardElement.classList.add('unavailable');
-                    } else {
-                        cardElement.addEventListener('click', () => this.selectCard(cardNum));
-                    }
-
-                    grid.appendChild(cardElement);
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Join failed');
                 }
 
-                this.updatePagination();
-            }
+                const result = await response.json();
 
-            selectCard(cardNumber) {
-                if (!this.availableCards.includes(cardNumber)) {
-                    return;
-                }
+                this.showSuccess(`Card #${this.selectedCard} selected successfully!`);
 
-                // Deselect previous card
-                document.querySelectorAll('.card-number.selected').forEach(card => {
-                    card.classList.remove('selected');
-                });
-
-                // Select new card
-                const cardElement = document.querySelector(`[data-card-number="${cardNumber}"]`);
-                if (cardElement) {
-                    cardElement.classList.add('selected');
-                    cardElement.classList.add('pulse');
-                    setTimeout(() => cardElement.classList.remove('pulse'), 500);
-                }
-
-                this.selectedCard = cardNumber;
-                document.getElementById('selectCard').disabled = false;
-
-                // Show card preview
-                this.showCardPreview(cardNumber);
-            }
-
-            selectRandomCard() {
-                const availableOnPage = this.availableCards.filter(card => 
-                    card >= 145 + (this.currentPage * this.cardsPerPage) && 
-                    card < 145 + ((this.currentPage + 1) * this.cardsPerPage)
-                );
-
-                if (availableOnPage.length > 0) {
-                    const randomCard = availableOnPage[Math.floor(Math.random() * availableOnPage.length)];
-                    this.selectCard(randomCard);
-                } else {
-                    this.showMessage('No available cards on this page. Try another page.');
-                }
-            }
-
-            async confirmCardSelection() {
-                if (!this.selectedCard) return;
-
-                if (this.gameData.wallet < this.gameData.stake) {
-                    this.showMessage('Insufficient funds in your wallet!');
-                    return;
-                }
-
-                try {
-                    this.showLoading('Processing selection...');
-
-                    // Prepare data to send back to bot
-                    const selectionData = {
+                // Send confirmation to Telegram bot
+                if (this.tg.sendData) {
+                    this.tg.sendData(JSON.stringify({
                         action: 'select_card',
                         card_number: this.selectedCard,
-                        user_id: this.tg.initDataUnsafe?.user?.id,
-                        timestamp: Date.now()
-                    };
-
-                    console.log('Sending selection data:', selectionData);
-
-                    // Send data to Telegram bot
-                    if (this.tg.sendData) {
-                        this.tg.sendData(JSON.stringify(selectionData));
-                    }
-
-                    // Show success message
-                    this.showSuccess(`Card #${this.selectedCard} selected successfully!`);
-
-                    // Close the web app after a delay
-                    setTimeout(() => {
-                        if (this.tg.close) {
-                            this.tg.close();
-                        }
-                    }, 2000);
-
-                } catch (error) {
-                    console.error('Error selecting card:', error);
-                    this.showError('Error selecting card. Please try again.');
+                        success: true
+                    }));
                 }
-            }
-
-            showCardPreview(cardNumber) {
-                const preview = document.getElementById('bingoCardPreview');
-                preview.classList.add('show');
-
-                // Generate bingo card based on card number (deterministic)
-                const card = this.generateBingoCard(cardNumber);
-                this.renderBingoCard(card);
-            }
-
-            generateBingoCard(seed) {
-                // Use seed to generate deterministic card
-                const rng = this.seededRandom(seed);
-                const card = { B: [], I: [], N: [], G: [], O: [] };
-                const ranges = {
-                    'B': [1, 15],
-                    'I': [16, 30],
-                    'N': [31, 45],
-                    'G': [46, 60],
-                    'O': [61, 75]
-                };
-
-                for (const [letter, [min, max]] of Object.entries(ranges)) {
-                    const numbers = [];
-                    while (numbers.length < 5) {
-                        const num = Math.floor(rng() * (max - min + 1)) + min;
-                        if (!numbers.includes(num)) {
-                            numbers.push(num);
-                        }
-                    }
-                    card[letter] = numbers.sort((a, b) => a - b);
-                }
-
-                // Center is free
-                card['N'][2] = 'FREE';
-
-                return card;
-            }
-
-            seededRandom(seed) {
-                let value = seed;
-                return function() {
-                    value = (value * 9301 + 49297) % 233280;
-                    return value / 233280;
-                };
-            }
-
-            renderBingoCard(card) {
-                const container = document.getElementById('bingoCardPreview');
-                // Clear existing content except the header
-                const header = container.querySelector('.bingo-header');
-                container.innerHTML = '';
-                if (header) container.appendChild(header);
-                
-                let html = '';
-
-                for (let i = 0; i < 5; i++) {
-                    html += '<div class="bingo-row">';
-                    for (const letter of ['B', 'I', 'N', 'G', 'O']) {
-                        const value = card[letter][i];
-                        const cellClass = value === 'FREE' ? 'bingo-cell free' : 'bingo-cell';
-                        html += `<div class="${cellClass}">${value}</div>`;
-                    }
-                    html += '</div>';
-                }
-
-                container.innerHTML += html;
-            }
-
-            previousPage() {
-                if (this.currentPage > 0) {
-                    this.currentPage--;
-                    this.renderCardGrid();
-                }
-            }
-
-            nextPage() {
-                const totalPages = Math.ceil(400 / this.cardsPerPage);
-                if (this.currentPage < totalPages - 1) {
-                    this.currentPage++;
-                    this.renderCardGrid();
-                }
-            }
-
-            updatePagination() {
-                const totalPages = Math.ceil(400 / this.cardsPerPage);
-                document.getElementById('pageInfo').textContent = `Page ${this.currentPage + 1}/${totalPages}`;
-                document.getElementById('prevPage').disabled = this.currentPage === 0;
-                document.getElementById('nextPage').disabled = this.currentPage >= totalPages - 1;
-            }
-
-            handleSearch(e) {
-                const searchTerm = e.target.value.trim();
-                if (searchTerm) {
-                    const cardNum = parseInt(searchTerm);
-                    if (cardNum >= 145 && cardNum <= 544) {
-                        // Find which page this card would be on
-                        const page = Math.floor((cardNum - 145) / this.cardsPerPage);
-                        if (page !== this.currentPage) {
-                            this.currentPage = page;
-                            this.renderCardGrid();
-                        }
-                        
-                        // Highlight the card
-                        const cardElement = document.querySelector(`[data-card-number="${cardNum}"]`);
-                        if (cardElement) {
-                            cardElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            cardElement.style.boxShadow = '0 0 0 3px #4CAF50';
-                            setTimeout(() => {
-                                cardElement.style.boxShadow = '';
-                            }, 2000);
-                        }
-                    }
-                }
-            }
-
-            handleSearchEnter(e) {
-                const searchTerm = e.target.value.trim();
-                if (searchTerm) {
-                    const cardNum = parseInt(searchTerm);
-                    if (cardNum >= 145 && cardNum <= 544 && this.availableCards.includes(cardNum)) {
-                        this.selectCard(cardNum);
-                    } else {
-                        this.showMessage('Card not available. Please select another card.');
-                    }
-                }
-            }
-
-            updateWalletDisplay() {
-                document.getElementById('walletAmount').textContent = this.gameData.wallet;
-                document.getElementById('stakeAmount').textContent = this.gameData.stake;
-            }
-
-            updateStatusInfo() {
-                const statusElement = document.getElementById('statusInfo');
-                statusElement.innerHTML = `
-                    <div><strong>Available Cards:</strong> ${this.availableCards.length}/400</div>
-                    <div><strong>Current Pot:</strong> ${this.gameData.currentGame.pot} coins</div>
-                    <div><strong>Win Pattern:</strong> ${this.gameData.winPattern}</div>
-                    <div><strong>Players:</strong> ${this.gameData.currentGame.players}</div>
-                `;
-            }
-
-            showLoading(message) {
-                const loading = document.getElementById('loading');
-                loading.textContent = message;
-                loading.style.display = 'block';
-                
-                document.getElementById('cardGrid').style.display = 'none';
-                document.getElementById('bingoCardPreview').style.display = 'none';
-                document.getElementById('statusInfo').style.display = 'none';
-            }
-
-            hideLoading() {
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('cardGrid').style.display = 'grid';
-                document.getElementById('bingoCardPreview').style.display = 'block';
-                document.getElementById('statusInfo').style.display = 'block';
-            }
-
-            showSuccess(message) {
-                this.showMessage(message, 'success');
-            }
-
-            showError(message) {
-                this.showMessage(message, 'error');
-            }
-
-            showMessage(message, type = 'info') {
-                const messageDiv = document.createElement('div');
-                messageDiv.className = `success-message ${type}`;
-                messageDiv.textContent = message;
-                messageDiv.style.background = type === 'error' ? '#f44336' : type === 'success' ? '#4CAF50' : '#2196F3';
-                
-                document.body.appendChild(messageDiv);
 
                 setTimeout(() => {
-                    if (document.body.contains(messageDiv)) {
-                        document.body.removeChild(messageDiv);
+                    if (this.tg.close) {
+                        this.tg.close();
                     }
-                }, 3000);
-            }
+                }, 2000);
 
-            refreshData() {
-                console.log('Refreshing game data...');
-                this.loadGameData();
+            } catch (error) {
+                console.error('Error selecting card:', error);
+                this.showError(error.message || 'Error selecting card. Please try again.');
             }
         }
 
-        // Initialize the web app when the page loads
-        document.addEventListener('DOMContentLoaded', () => {
-            // Check if we're in Telegram Web App
-            if (window.Telegram && window.Telegram.WebApp) {
-                new BingoWebApp();
-            } else {
-                // Fallback for testing outside Telegram
-                console.log('Running in standalone mode');
-                // Mock Telegram Web App environment for testing
-                window.Telegram = {
-                    WebApp: {
-                        initData: '',
-                        initDataUnsafe: {},
-                        version: '6.0',
-                        platform: 'web',
-                        expand: () => console.log('App expanded'),
-                        ready: () => console.log('App ready'),
-                        enableClosingConfirmation: () => console.log('Closing confirmation enabled'),
-                        sendData: (data) => {
-                            console.log('Data sent to bot:', data);
-                            alert('Card selection sent to bot! In Telegram, this would close the app.');
-                        },
-                        close: () => {
-                            console.log('App closed');
-                            alert('App would close in Telegram environment');
-                        }
-                    }
-                };
-                
-                new BingoWebApp();
-            }
-        });
+        // ... (other methods remain similar)
+    }
 
-        // Add CSS for standalone testing
-        if (!window.Telegram || !window.Telegram.WebApp) {
-            const style = document.createElement('style');
-            style.textContent = `
-                body::before {
-                    content: "⚠️ Testing Mode - Outside Telegram";
-                    display: block;
-                    background: #ff9800;
-                    color: white;
-                    padding: 10px;
-                    text-align: center;
-                    font-weight: bold;
-                    margin-bottom: 20px;
-                }
-            `;
-            document.head.appendChild(style);
-        }
-    </script>
+    // Initialize the app
+    document.addEventListener('DOMContentLoaded', () => {
+        new BingoWebApp();
+    });
+</script>
 </body>
 </html>
